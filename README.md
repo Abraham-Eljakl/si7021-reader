@@ -4,7 +4,7 @@ Embassy firmware for thr nRF54L15 devkit that reads temperature and humidity fro
 
 ## Status
 
-LED Blink verfied working on real hardware. Si7021 sensor reading and UART not yet implemented
+LED Blink and push button verified to work
 
 ## Getting started
 
