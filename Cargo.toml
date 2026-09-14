@@ -29,6 +29,7 @@ embassy-time = { version = "0.5", features = ["defmt", "defmt-timestamp-uptime"]
 
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 embassy-nrf = { version = "0.11", features = ["defmt", "nrf54l15-app-s", "time-driver-grtc", "gpiote", "unstable-pac", "time"] }
+heapless = "0.9.3"
 [profile.release]
 debug = 2
 lto = true
