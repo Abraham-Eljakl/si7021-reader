@@ -34,3 +34,20 @@ This project uses Nix flake to provide a reproducible set of tools to manage the
 
 7. UART used P1.05 as RX and P1.04 as tx matching the Serial Port 1 pins.
 
+## Investigation: why temp reads need a bit shift left by one
+
+The raw temp value from the Si7021 consistently comes back as almot exactly double what the datasheet forula expects. I confirmed that the sensor was live and I2C was working with a simple touch to the sensor. Humidity showed no problems, only temperature was giving me issues over the bus line
+
+Hyptheses tested and ruled out:
+
+1. Under-voltage - Board configuratoe showed Vdd at 2.9 V rather than 3.3V, moved power input from VDDIO to VBUS to allow for more regulator head room but no changes were seen.
+
+2. Pull-up strength - enabled the chip's internal SCL/SDA pull-ups in addition to the breakout board's external ones but no change was made to the raw byte data.
+
+3. Sequencing / idle timing - swapping which measurment (temp or humidity) ran first in the loop did move the shift; it stayed attached to temperature specifically, regardless of position.
+
+4. Command specificity - reading temperature via a completely different command ('OxEO', reading a value already computed during the prior humidity conversion) showed the same shift as the direct 0xF3 command
+
+5. Sensor resolution/config - read the Si7021's user register directly and confirmed it matched the datasheet default exactly (00111010), ruling out a non-standard setting
+
+Conclusion: The cause was due to a hardware issue, after swapping out with a different Si7021 the board began to read values correctly.
