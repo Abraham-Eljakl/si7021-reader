@@ -1,3 +1,9 @@
+## 0.2.1 (2026-09-16)
+
+### Fix
+
+- **flags**: ok flag to prevent bus lock up
+
 ## 0.2.0 (2026-09-14)
 
 ### Feat
