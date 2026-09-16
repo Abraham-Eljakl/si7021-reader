@@ -31,8 +31,10 @@ async fn main(_spawner: Spawner) {
     //I2C Setup
     let config = twim::Config::default();
 
-    //twim data can only accesss ram, not flash it, so the transfer buffer must be static, ram
-    //allocation rather than a plain array
+    //twim data can only accesss ram, not flash it, so the transfer buffer must be static within the
+    //ram so the twim easyDMA can accesses it, ram allocation rather than a plain array is done because
+    //of that so on flash it is still able to access the buffer apposed to a static array that is in
+    //the memory allocation that gets flashed on a compile
     static RAM_BUFFER: ConstStaticCell<[u8; 16]> = ConstStaticCell::new([0; 16]);
 
     let mut i2c = twim::Twim::new(
@@ -59,6 +61,11 @@ async fn main(_spawner: Spawner) {
     loop {
         let mut temp_c: f32 = 0.0;
         let mut humidity: f32 = 0.0;
+        //tracks whether every step this cycle succeded, this was put in as bus lock up was seen
+        //between measurements so using with_timeout to ensure when a lock up occures, instead of
+        //locking out rhe bus line it will skip the write or read and prevent any misleading data
+        //from going over UART
+        let mut ok = true;
 
         //no hold master was chosen so that the sensor never stretched the clcok so we can
         //explicitly delay instead of relying on a blocking combined
@@ -78,15 +85,32 @@ async fn main(_spawner: Spawner) {
                         //error
                         temp_c = ((175.72 * raw as f32) / 65536.0) - 46.85;
                     }
-                    Ok(Err(e)) => info!(" temp read error: {:?}", e),
-
-                    Err(_) => info!("temp read timed out"),
+                    Ok(Err(e)) => {
+                        info!(" temp read error: {:?}", e);
+                        //a i2c error occured: mark the cycle as bad so the stale temp_c value never
+                        //gets sent
+                        ok = false;
+                    }
+                    Err(_) => {
+                        info!("temp read timed out");
+                        //bus never responded within a resonable and timed out so for the same
+                        //reason it wil not report the reading that never occured
+                        ok = false;
+                    }
                 }
             }
 
-            Ok(Err(e)) => info!("temp write error: {:?}", e),
+            Ok(Err(e)) => {
+                info!("temp write error: {:?}", e);
+                //same logic seen in the temp read but for writing on the bus
+                ok = false;
+            }
 
-            Err(_) => info!("temp write timed out"),
+            Err(_) => {
+                info!("temp write timed out");
+                //same logic as seen in temp read but for writing and the bus times out
+                ok = false;
+            }
         }
 
         match with_timeout(I2C_TIMEOUT, i2c.write(SI7021, &[MEASURE_HUMIDITY_NO_HOLD])).await {
@@ -101,21 +125,37 @@ async fn main(_spawner: Spawner) {
                         //reading is correct, the bit slip appears only for the temo reading
                         humidity = (125.0 * raw_h as f32) / 65536.0 - 6.0;
                     }
-                    Ok(Err(e)) => info!("humidity read error: {:?}", e),
+                    Ok(Err(e)) => {
+                        info!("humidity read error: {:?}", e);
+                        ok = false;
+                    }
 
-                    Err(_) => info! {"humidity read timed out"},
+                    Err(_) => {
+                        info! {"humidity read timed out"};
+                        ok = false;
+                    }
                 }
             }
-            Ok(Err(e)) => info!("humidity write error: {:?}", e),
+            Ok(Err(e)) => {
+                info!("humidity write error: {:?}", e);
+                ok = false;
+            }
 
-            Err(_) => info!("humidity write timed out"),
+            Err(_) => {
+                info!("humidity write timed out");
+                ok = false;
+            }
         }
 
-        //forward the reading to the laptop over uart and log it locally
-        let mut msg: String<64> = String::new();
-        let _ = write!(msg, "temp: {:.2} C, humidity: {:.2}%\r\n", temp_c, humidity);
-        let _ = uart.write(msg.as_bytes()).await;
-        info!("temp: {} C, humidity: {}%", temp_c, humidity);
+        //forward the reading to the laptop over uart and log it locally if both are genuinely
+        //succeded during the cycle, this wil prevent a partial or fully failed cycle from reporting
+        //zeros as if it were real sensor data
+        if ok {
+            let mut msg: String<64> = String::new();
+            let _ = write!(msg, "temp: {:.2} C, humidity: {:.2}%\r\n", temp_c, humidity);
+            let _ = uart.write(msg.as_bytes()).await;
+            info!("temp: {} C, humidity: {}%", temp_c, humidity);
+        }
 
         Timer::after_millis(1000).await;
     }
