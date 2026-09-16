@@ -66,6 +66,7 @@ async fn main(_spawner: Spawner) {
         //locking out rhe bus line it will skip the write or read and prevent any misleading data
         //from going over UART
         let mut ok = true;
+        let mut msg: String<64> = String::new();
 
         //no hold master was chosen so that the sensor never stretched the clcok so we can
         //explicitly delay instead of relying on a blocking combined
@@ -86,12 +87,16 @@ async fn main(_spawner: Spawner) {
                         temp_c = ((175.72 * raw as f32) / 65536.0) - 46.85;
                     }
                     Ok(Err(e)) => {
+                        let _ = write!(msg, "temp read error: {:?}%\r\n", e);
+                        let _ = uart.write(msg.as_bytes()).await;
                         info!(" temp read error: {:?}", e);
                         //a i2c error occured: mark the cycle as bad so the stale temp_c value never
                         //gets sent
                         ok = false;
                     }
                     Err(_) => {
+                        let _ = write!(msg, "temp read timed out\r\n");
+                        let _ = uart.write(msg.as_bytes()).await;
                         info!("temp read timed out");
                         //bus never responded within a resonable and timed out so for the same
                         //reason it wil not report the reading that never occured
@@ -101,12 +106,16 @@ async fn main(_spawner: Spawner) {
             }
 
             Ok(Err(e)) => {
+                let _ = write!(msg, "temp write error: {:?}%\r\n", e);
+                let _ = uart.write(msg.as_bytes()).await;
                 info!("temp write error: {:?}", e);
                 //same logic seen in the temp read but for writing on the bus
                 ok = false;
             }
 
             Err(_) => {
+                let _ = write!(msg, "temp write timed out\r\n");
+                let _ = uart.write(msg.as_bytes()).await;
                 info!("temp write timed out");
                 //same logic as seen in temp read but for writing and the bus times out
                 ok = false;
@@ -126,32 +135,38 @@ async fn main(_spawner: Spawner) {
                         humidity = (125.0 * raw_h as f32) / 65536.0 - 6.0;
                     }
                     Ok(Err(e)) => {
+                        let _ = write!(msg, "humidity read error: {:?}\r\n", e);
+                        let _ = uart.write(msg.as_bytes()).await;
                         info!("humidity read error: {:?}", e);
                         ok = false;
                     }
 
                     Err(_) => {
+                        let _ = write!(msg, "humidity read timed out%\r\n");
+                        let _ = uart.write(msg.as_bytes()).await;
                         info! {"humidity read timed out"};
                         ok = false;
                     }
                 }
             }
             Ok(Err(e)) => {
+                let _ = write!(msg, "humidity write error: {:?}%\r\n", e);
+                let _ = uart.write(msg.as_bytes()).await;
                 info!("humidity write error: {:?}", e);
                 ok = false;
             }
 
             Err(_) => {
+                let _ = write!(msg, "humidity write timed out\r\n");
+                let _ = uart.write(msg.as_bytes()).await;
                 info!("humidity write timed out");
                 ok = false;
             }
         }
 
         //forward the reading to the laptop over uart and log it locally if both are genuinely
-        //succeded during the cycle, this wil prevent a partial or fully failed cycle from reporting
-        //zeros as if it were real sensor data
+        //succeded during the cycle, this wil prevent a partial or fully failed cycle from reporting zeros as if it were real sensor data
         if ok {
-            let mut msg: String<64> = String::new();
             let _ = write!(msg, "temp: {:.2} C, humidity: {:.2}%\r\n", temp_c, humidity);
             let _ = uart.write(msg.as_bytes()).await;
             info!("temp: {} C, humidity: {}%", temp_c, humidity);
