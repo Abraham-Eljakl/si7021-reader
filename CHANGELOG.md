@@ -1,3 +1,9 @@
+## 0.2.2 (2026-09-16)
+
+### Fix
+
+- **error-logging**: error logging to the uart port
+
 ## 0.2.1 (2026-09-16)
 
 ### Fix
